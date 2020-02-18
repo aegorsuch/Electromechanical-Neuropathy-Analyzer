@@ -1,0 +1,47 @@
+void setup() {
+ // initialize serial port connected to the Xbee transmitter
+ Serial.begin(9600); // speed = 9600 baud
+}
+void loop() {
+ int result;
+ // Read from sensors and transmit message containing
+ // the sensor readings.
+ result = transmitMsg();
+ delay(100); // Delay for 100 ms between messages
+}
+// Transmit a message containing the sensor values
+// to the Xbee
+int transmitMsg(){
+ int val; // Variable to hold value read from sensor
+ int checksum = 0;
+ byte data;
+ int i;
+
+ Serial.print(0x7e, BYTE); // First byte
+ Serial.print(0x0, BYTE); // First byte of length field
+ Serial.print(0x17, BYTE); // Second byte of length field
+ Serial.print(0x01, BYTE); // API ID
+ Serial.print(0x0, BYTE); // Frame ID
+ Serial.print(0xff, BYTE); // MS byte of Destination Addr
+ Serial.print(0xff, BYTE); // LS byte of Destination Addr
+ Serial.print(0x1, BYTE); // Byte 8 = Disable Ack
+ // send a pattern 55AA hex that the receiver can recognize
+ Serial.print(0x55, BYTE);
+ checksum = checksum + 0x55;
+ Serial.print(0xaa, BYTE);
+ checksum = checksum + 0xaa;
+ // Send the data read from each sensor using 2 bytes 
+22
+ for (i=0; i<8; i=i+1){
+ val = analogRead(i); // val will be between 0 and 1023
+ data = val;
+ Serial.print(data, BYTE);
+ checksum = checksum + data;
+ data = val >> 8;
+ Serial.print(data, BYTE);
+ checksum = checksum + data;
+ }
+ // Flip bits to find checksum
+ checksum = 0xff - checksum;
+ Serial.print(checksum, BYTE);
+} 
