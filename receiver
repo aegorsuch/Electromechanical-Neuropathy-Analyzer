@@ -1,0 +1,167 @@
+#include "TimerOne.h" // Needed for using the Arduino timer library
+// Arduino pin definitions
+int RedDataPin = 12;
+int GreenDataPin = 11;
+int BlueDataPin = 10;
+int RedParClockPin = 9;
+int GreenParClockPin = 8;
+int BlueParClockPin = 7;
+int SerialClockPin = 13;
+int RowSelectDataPin = 5;
+int RowSelectParClockPin = 6;
+// The following arrays are used to display the LED BARs, one array for each
+color.
+// Array element [i] is an integer representing Row i of the 8x8 LED display.
+Bit j of this element
+// turns on the LED in Column j of the 8x8 display.
+// Example: Element [0] = 3 means that the first two LEDs of the first low
+will light up.
+byte redValues[8] = {
+ 0, 0, 0, 0, 0, 0, 0, 0};
+byte greenValues[8] = {
+ 0, 0, 0, 0, 0, 0, 0, 0};
+byte blueValues[8] = {
+ 0, 0, 0, 0, 0, 0, 0, 0};
+// Threshold values for turning on a LED. These are the "steps" in the BAR
+graph.
+int yAxisSteps[8] = {
+ 100, 160, 220, 280, 340, 400, 460, 520};
+int currentDisplayRow = 0; // Points to the current row being scanned.
+void setup() {
+ // Set up Arduino pins
+ pinMode(RedDataPin, OUTPUT); // Drives RED shift register data pin
+ pinMode(GreenDataPin, OUTPUT); // Drives GREEN shift register data pin
+ pinMode(BlueDataPin, OUTPUT); // Drives BLUE shift register data pin
+ pinMode(RedParClockPin, OUTPUT); // Drives RED shift register parallel
+clock pin
+ pinMode(GreenParClockPin, OUTPUT); // Drives GREEN shift register parallel
+clock pin
+ pinMode(BlueParClockPin, OUTPUT); // Drives BLUE shift register parallel
+clock pin
+ pinMode(SerialClockPin, OUTPUT); // Drives the serial clock pin of all
+shift registers
+ pinMode(RowSelectDataPin, OUTPUT); // Drives Row Selection shift register
+data pin 
+25
+ pinMode(RowSelectParClockPin, OUTPUT); // Drives Row Selection shift
+register parallel clock pin
+ Serial.begin(9600);
+ // Initialize timer to 2 milliseconds, to change the display row
+ // every 2 milliseconds.
+ Timer1.initialize(2000);
+ Timer1.attachInterrupt(refreshRow); // When timer goes off, call this
+function
+}
+void loop() {
+ int val;
+ int sensorData;
+ byte greenLEDBar[8];
+ int i;
+ // Check for a new packet from the XBee.
+ // The pattern 55AA hex marks the start of a packet.
+ while (Serial.available()==0){
+ };
+ val = Serial.read();
+ if (val == 0x55){
+ while (Serial.available()==0){
+ };
+ val = Serial.read();
+ if (val == 0xaa){
+ for (i=0; i<8; i++){
+ while (Serial.available()==0){
+ };
+ val = Serial.read();
+ // Get sensor data. There are 8 sensors and 2 bytes per sensor.
+ sensorData = val;
+ while (Serial.available()==0){
+ };
+ val = Serial.read();
+ sensorData = sensorData + val*256;
+ // Display data on the LEDs
+ greenLEDBar[i] = setLEDBar(sensorData);
+ }
+ // Update LED Bars
+ greenValues[7] = greenLEDBar[0]; // Heel
+ greenValues[6] = greenLEDBar[2]; // Arch2
+ greenValues[5] = greenLEDBar[6]; // Arch1
+ greenValues[4] = greenLEDBar[3]; // MTH5
+ greenValues[3] = greenLEDBar[5]; // MTH
+ greenValues[2] = greenLEDBar[4]; // MTH1
+ greenValues[1] = greenLEDBar[7]; // FING
+ greenValues[0] = greenLEDBar[1]; // Toe
+ for (i=0; i<8; i++)
+ blueValues[i] = greenValues[i]; // Display both green and blue LEDs
+to make them purple.
+ }
+ }
+} 
+26
+byte setLEDBar(int val){
+ // Convert the sensor data to the LED bar format.
+ byte ledBar = 0;
+ if (val > yAxisSteps[0]) ledBar = ledBar + 1;
+ if (val > yAxisSteps[1]) ledBar = ledBar + 2;
+ if (val > yAxisSteps[2]) ledBar = ledBar + 4;
+ if (val > yAxisSteps[3]) ledBar = ledBar + 8;
+ if (val > yAxisSteps[4]) ledBar = ledBar + 16;
+ if (val > yAxisSteps[5]) ledBar = ledBar + 32;
+ if (val > yAxisSteps[6]) ledBar = ledBar + 64;
+ if (val > yAxisSteps[7]) ledBar = ledBar + 128;
+ return ledBar;
+}
+void refreshRow(){
+ // Display one row of 8 LEDs on the LED display.
+ // The variable currentDisplayRow points to the row to be displayed.
+ // This function is called every 2 ms to refresh the display.
+ byte red = 0;
+ byte green = 0;
+ byte blue = 0;
+ int i;
+ byte colNum = 0;
+ byte rowBit = (1 << currentDisplayRow);
+ byte index = 1;
+ // Transfer data to the display serially through the shift registers.
+ digitalWrite(RowSelectDataPin, LOW);
+ for (i=0; i<8; i++){
+ digitalWrite(SerialClockPin, HIGH); // serial clock
+ digitalWrite(SerialClockPin, LOW);
+ }
+ digitalWrite(RowSelectParClockPin, HIGH);
+ digitalWrite(RowSelectParClockPin, LOW);
+ for (i=0; i<8; i++){
+ if (redValues[i] & rowBit)
+ digitalWrite(RedDataPin, HIGH);
+ else
+ digitalWrite(RedDataPin, LOW);
+ if (greenValues[i] & rowBit)
+ digitalWrite(GreenDataPin, HIGH);
+ else
+ digitalWrite(GreenDataPin, LOW);
+ if (blueValues[i] & rowBit)
+ digitalWrite(BlueDataPin, HIGH);
+ else
+ digitalWrite(BlueDataPin, LOW);
+ // Select the row on the display
+ if (rowBit & index)
+ digitalWrite(RowSelectDataPin, HIGH);
+ else 
+27
+ digitalWrite(RowSelectDataPin, LOW);
+ digitalWrite(SerialClockPin, HIGH); // serial clock
+ digitalWrite(SerialClockPin, LOW);
+ index = index << 1;
+ }
+ // Once the data is shifted into the shift registers, we need to give a
+pulse on
+ // the parallel clock inputs to transfer the data to their outputs.
+ digitalWrite(RedParClockPin, HIGH); // Red parallel clock
+ digitalWrite(RedParClockPin, LOW);
+ digitalWrite(GreenParClockPin, HIGH); // Green parallel clock
+ digitalWrite(GreenParClockPin, LOW);
+ digitalWrite(BlueParClockPin, HIGH); // Blue parallel clock
+ digitalWrite(BlueParClockPin, LOW);
+ digitalWrite(RowSelectParClockPin, HIGH);
+ digitalWrite(RowSelectParClockPin, LOW);
+ // Increment the row number to get it ready for the next refresh cycle
+ currentDisplayRow = (currentDisplayRow+1) % 8;
+} 
